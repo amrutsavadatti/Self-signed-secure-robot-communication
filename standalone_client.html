@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standalone Robot Control Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .note {
+            background-color: #fff8e1;
+            border-left: 4px solid #ffc107;
+            padding: 10px 15px;
+            margin-bottom: 20px;
+        }
+
+        .connection-info {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .connected {
+            background-color: #4CAF50;
+        }
+        .disconnected {
+            background-color: #f44336;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            height: 200px;
+            overflow-y: auto;
+        }
+
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        input {
+            width: 50px;
+            padding: 5px;
+            margin: 0 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Standalone Robot Control Client</h1>
+    
+    <div class="note">
+        <p><strong>Note:</strong> To use this client, you need to:</p>
+        <ol>
+            <li>Start the Robot API server: <code>cd POC/robot_server && python robot_api.py</code></li>
+            <li>Visit <code>https://localhost:8443/</code> in your browser first to accept the self-signed certificate</li>
+            <li>Then return to this page to connect to the robot server</li>
+        </ol>
+    </div>
+    
+    <div class="container">
+        <div class="card">
+            <h2>Connection</h2>
+            <div class="connection-info">
+                <div id="status-indicator" class="status-indicator disconnected"></div>
+                <span id="connection-status">Disconnected</span>
+            </div>
+            <div>
+                <label for="robot-url">Robot URL:</label>
+                <input type="text" id="robot-url" value="localhost" style="width: 150px;">
+                <input type="number" id="robot-port" value="8443" style="width: 70px;">
+            </div>
+            <div style="margin-top: 15px;">
+                <button id="connect-btn">Connect</button>
+                <button id="disconnect-btn" disabled>Disconnect</button>
+                <button id="get-status-btn" disabled>Get Status (HTTPS)</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Robot Control</h2>
+            <div>
+                <button id="get-data-btn" disabled>Get Robot Data</button>
+            </div>
+            <div style="margin-top: 15px;">
+                <h3>Move Robot</h3>
+                <div>
+                    <label>Position:</label>
+                    X: <input type="number" id="pos-x" value="10">
+                    Y: <input type="number" id="pos-y" value="20">
+                    Z: <input type="number" id="pos-z" value="0">
+                    <button id="move-btn" disabled>Move</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Robot Data</h2>
+            <pre id="robot-data">Connect to the robot to see data...</pre>
+        </div>
+
+        <div class="card">
+            <h2>Command Log</h2>
+            <pre id="command-log"></pre>
+        </div>
+    </div>
+
+    <script>
+        const statusIndicator = document.getElementById('status-indicator');
+        const connectionStatus = document.getElementById('connection-status');
+        const robotUrlInput = document.getElementById('robot-url');
+        const robotPortInput = document.getElementById('robot-port');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const getStatusBtn = document.getElementById('get-status-btn');
+        const getDataBtn = document.getElementById('get-data-btn');
+        const moveBtn = document.getElementById('move-btn');
+        const posXInput = document.getElementById('pos-x');
+        const posYInput = document.getElementById('pos-y');
+        const posZInput = document.getElementById('pos-z');
+        const robotDataDisplay = document.getElementById('robot-data');
+        const commandLogDisplay = document.getElementById('command-log');
+
+        let websocket = null;
+        function connectToRobot() {
+            const robotUrl = robotUrlInput.value;
+            const robotPort = robotPortInput.value;
+            const wsUrl = `wss://${robotUrl}:${robotPort}/web_socker_endpoint`;
+            
+            log(`Connecting to ${wsUrl}...`);
+            connectionStatus.textContent = 'Connecting...';
+            
+            try {
+                websocket = new WebSocket(wsUrl);
+                
+                websocket.onopen = function(event) {
+                    log('Connected to robot.');
+                    connectionStatus.textContent = 'Connected';
+                    statusIndicator.classList.remove('disconnected');
+                    statusIndicator.classList.add('connected');
+                    
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    getStatusBtn.disabled = false;
+                    getDataBtn.disabled = false;
+                    moveBtn.disabled = false;
+                };
+                
+                websocket.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    log(`Received: ${JSON.stringify(data, null, 2)}`);
+                    
+                    // Updates robot data display if present
+                    if (data.robot) {
+                        robotDataDisplay.textContent = JSON.stringify(data.robot, null, 2);
+                    }
+                };
+                
+                websocket.onclose = function(event) {
+                    if (event.wasClean) {
+                        log(`Connection closed cleanly, code=${event.code} reason=${event.reason}`);
+                    } else {
+                        log('Connection died');
+                    }
+                    
+                    // Update UI
+                    websocket = null;
+                    connectionStatus.textContent = 'Disconnected';
+                    statusIndicator.classList.remove('connected');
+                    statusIndicator.classList.add('disconnected');
+                    
+                    // Disable controls
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    getStatusBtn.disabled = true;
+                    getDataBtn.disabled = true;
+                    moveBtn.disabled = true;
+                };
+                
+                websocket.onerror = function(error) {
+                    log(`WebSocket Error: ${error}`);
+                    console.error('WebSocket Error:', error);
+                };
+            
+            } catch (error) {
+                log(`Error connecting: ${error.message}`);
+                console.error('Connection error:', error);
+            }
+        }
+
+        function disconnectFromRobot() {
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+        }
+
+        // Get robot status via HTTPS
+        async function getRobotStatus() {
+            const robotUrl = robotUrlInput.value;
+            const robotPort = robotPortInput.value;
+            const apiUrl = `https://${robotUrl}:${robotPort}/api/status`;
+            
+            log(`Getting status from ${apiUrl}...`);
+            
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                log(`Status: ${JSON.stringify(data, null, 2)}`);
+                
+                // Update robot data display
+                if (data.robot) {
+                    robotDataDisplay.textContent = JSON.stringify(data.robot, null, 2);
+                }
+                
+            } catch (error) {
+                log(`Error getting status: ${error.message}`);
+                console.error('HTTPS Error:', error);
+                log('Tip: Try visiting https://' + robotUrl + ':' + robotPort + '/ directly in your browser first to accept the certificate');
+            }
+        }
+
+        // Get robot data via WebSocket
+        function getRobotData() {
+            if (!websocket) return;
+            
+            const command = {
+                command: "get_data",
+                timestamp: new Date().toISOString()
+            };
+            
+            log(`Sending command: ${JSON.stringify(command)}`);
+            websocket.send(JSON.stringify(command));
+        }
+
+
+        function moveRobot() {
+            if (!websocket) return;
+            
+            const x = parseInt(posXInput.value) || 0;
+            const y = parseInt(posYInput.value) || 0;
+            const z = parseInt(posZInput.value) || 0;
+            
+            const command = {
+                command: "move",
+                position: { x, y, z },
+                timestamp: new Date().toISOString()
+            };
+            
+            log(`Sending command: ${JSON.stringify(command)}`);
+            websocket.send(JSON.stringify(command));
+        }
+
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            commandLogDisplay.textContent = `[${timestamp}] ${message}\n` + commandLogDisplay.textContent;
+        }
+
+        connectBtn.addEventListener('click', connectToRobot);
+        disconnectBtn.addEventListener('click', disconnectFromRobot);
+        getStatusBtn.addEventListener('click', getRobotStatus);
+        getDataBtn.addEventListener('click', getRobotData);
+        moveBtn.addEventListener('click', moveRobot);
+
+        log('Standalone client loaded. Ready to connect to robot.');
+        log('Important: Make sure to visit https://localhost:8443/ first to accept the certificate!');
+    </script>
+</body>
+</html> 
