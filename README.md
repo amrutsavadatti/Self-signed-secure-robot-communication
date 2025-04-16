@@ -26,7 +26,8 @@ The key challenge this POC addresses is the connection from the client's browser
 
 1. Make sure you have the required packages installed in your virtual environment:
    ```
-   pip install fastapi uvicorn
+   pip install fastapi
+   pip install 'uvicorn[standard]'
    ```
 
 2. The self-signed certificates are already provided in the `certs` directory.
